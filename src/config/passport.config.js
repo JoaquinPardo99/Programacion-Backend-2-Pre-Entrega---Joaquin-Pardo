@@ -1,8 +1,8 @@
 import passport from "passport";
-import localStrategy from "passport-local";
-import jwt from "passport-jwt";
+import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as JwtStrategy, ExtractJwt } from "passport-jwt";
+import bcrypt from "bcrypt";
 import User from "../models/user.model.js";
-import { comparePassword } from "../utils/hashingUtils.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -19,17 +19,19 @@ const cookieExtractor = (req) => {
 
 passport.use(
   "login",
-  new localStrategy.Strategy(
+  new LocalStrategy(
     { usernameField: "email", passwordField: "password", session: false },
     async (email, password, done) => {
       try {
         const user = await User.findOne({ email });
-        if (!user)
+        if (!user) {
           return done(null, false, { message: "Usuario no encontrado" });
+        }
 
-        const isValid = comparePassword(password, user.password);
-        if (!isValid)
+        const isPasswordValid = bcrypt.compareSync(password, user.password);
+        if (!isPasswordValid) {
           return done(null, false, { message: "Contraseña incorrecta" });
+        }
 
         return done(null, user);
       } catch (error) {
@@ -41,18 +43,22 @@ passport.use(
 
 passport.use(
   "jwt",
-  new jwt.Strategy(
+  new JwtStrategy(
     {
-      jwtFromRequest: jwt.ExtractJwt.fromExtractors([cookieExtractor]),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req) => req?.cookies?.authToken,
+      ]),
       secretOrKey: SECRET_JWT,
     },
     async (payload, done) => {
       try {
         const user = await User.findById(payload.id);
-        if (!user) return done(null, false);
+        if (!user) {
+          return done(null, false);
+        }
         return done(null, user);
       } catch (error) {
-        return done(error);
+        return done(error, false);
       }
     }
   )
